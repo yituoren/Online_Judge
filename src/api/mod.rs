@@ -1,2 +1,2 @@
 pub mod job;
-use super::globals;
+pub mod error;

@@ -42,7 +42,7 @@ pub struct Server
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Problem
 {
-    pub id: u32,
+    pub id: usize,
     pub name: String,
     #[serde(rename = "type")]
     pub problem_type: String,
@@ -53,7 +53,7 @@ pub struct Problem
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Case
 {
-    pub score: u32,
+    pub score: f64,
     pub input_file: String,
     pub answer_file: String,
     pub time_limit: u64,
