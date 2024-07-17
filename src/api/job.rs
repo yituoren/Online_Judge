@@ -1,5 +1,5 @@
 use actix_web::web::Buf;
-use actix_web::HttpResponse;
+use actix_web::{delete, put, HttpResponse};
 use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
 use clap::builder::Str;
 use env_logger;
@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use tokio::sync::mpsc;
 use tokio::time;
-use std::env::Args;
-use std::net::ToSocketAddrs;
 use std::process::{Command, ExitStatus, Stdio};
 use std::fs::{create_dir_all, remove_dir_all, File};
 use std::io::{read_to_string, BufRead, BufReader, Error, ErrorKind, Result, Write};
@@ -18,11 +16,11 @@ use std::cmp::min;
 use std::time::Duration;
 use wait_timeout::ChildExt;
 
-use crate::globals::{self, JOB_LIST};
+use crate::globals::{JOB_LIST, USER_LIST};
 use crate::arg::{Config, Language, Problem};
 use crate::api::error::HttpError;
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PostJob
 {
     pub source_code: String,
@@ -32,7 +30,7 @@ pub struct PostJob
     pub problem_id: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Job
 {
     pub id: usize,
@@ -71,9 +69,25 @@ impl Job
             cases,
         }
     }
+
+    pub fn from(mut old_job: Job) -> Job
+    {
+        for case in old_job.cases.iter_mut()
+        {
+            case.result = "Waiting".to_string();
+            case.time = 0;
+            case.memory = 0;
+            case.info = String::new();
+        }
+        old_job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        old_job.state = "Queueing".to_string();
+        old_job.result = "Waiting".to_string();
+        old_job.score = 0.0;
+        old_job
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JobCase
 {
     pub id: usize,
@@ -83,14 +97,22 @@ pub struct JobCase
     pub info: String,
 }
 
-pub fn init_jobs(web_service_config: &mut web::ServiceConfig)
+#[derive(Deserialize)]
+pub struct JobQuery
 {
-    web_service_config.service(post_jobs)
-        .service(get_jobs);
+    user_id: Option<usize>,
+    user_name: Option<String>,
+    contest_id: Option<usize>,
+    problem_id: Option<usize>,
+    language: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+    state: Option<String>,
+    result: Option<String>,
 }
 
 #[get("/jobs/{jobid}")]
-pub async fn get_jobs(config: web::Data<Config>, get_job: web::Path<usize>) -> HttpResponse
+pub async fn get_jobs_id(get_job: web::Path<usize>) -> HttpResponse
 {
     let id = get_job;
     let lock = JOB_LIST.lock().await;
@@ -101,7 +123,7 @@ pub async fn get_jobs(config: web::Data<Config>, get_job: web::Path<usize>) -> H
             .json(HttpError {
                 code: 3,
                 reason: "ERR_NOT_FOUND".to_string(),
-                message: "Problem ".to_string() + &id.to_string() + " not found."
+                message: "Job ".to_string() + &id.to_string() + " not found."
             });
     }
     HttpResponse::Ok()
@@ -109,10 +131,150 @@ pub async fn get_jobs(config: web::Data<Config>, get_job: web::Path<usize>) -> H
         .json(lock[*id].clone())
 }
 
+#[get("/jobs")]
+pub async fn get_jobs_query(query: web::Query<JobQuery>) -> HttpResponse
+{
+    let lock = JOB_LIST.lock().await;
+    let mut job_list = lock.clone();
+    drop(lock);
+
+    if let Some(user_id) = query.user_id
+    {
+        job_list.retain(|x| x.submission.user_id == user_id);
+    }
+    if let Some(problem_id) = query.problem_id
+    {
+        job_list.retain(|x| x.submission.problem_id == problem_id);
+    }
+    if let Some(contest_id) = query.contest_id
+    {
+        job_list.retain(|x| x.submission.contest_id == contest_id);
+    }
+    if let Some(language) = &query.language
+    {
+        job_list.retain(|x| x.submission.language == *language);
+    }
+    if let Some(from) = &query.from
+    {
+        job_list.retain(|x| x.created_time >= *from);
+    }
+    if let Some(to) = &query.to
+    {
+        job_list.retain(|x| x.created_time <= *to);
+    }
+    if let Some(state) = &query.state
+    {
+        job_list.retain(|x| x.state >= *state);
+    }
+    if let Some(result) = &query.result
+    {
+        job_list.retain(|x| x.result >= *result);
+    }
+    if let Some(user_name) = &query.user_name
+    {
+        match USER_LIST.lock().await.iter().position(|x| x.name == *user_name)
+        {
+            Some(id) => job_list.retain(|y| y.submission.user_id == id),
+            None => job_list.clear(),
+        }
+    }
+
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .json(job_list)
+}
+
+#[put("/jobs/{jobid}")]
+pub async fn put_jobs_id(put_job: web::Path<usize>) -> HttpResponse
+{
+    let id = *put_job;
+    let mut lock = JOB_LIST.lock().await;
+    if id >= lock.len()
+    {
+        return HttpResponse::NotFound()
+            .content_type("application/json")
+            .json(HttpError {
+                code: 3,
+                reason: "ERR_NOT_FOUND".to_string(),
+                message: "Job ".to_string() + &id.to_string() + " not found."
+            });
+    }
+    if lock[id].state != "Finished"
+    {
+        return HttpResponse::BadRequest()
+            .content_type("application/json")
+            .json(HttpError {
+                code: 2,
+                reason: "ERR_INVALID_STATE".to_string(),
+                message: "Job ".to_string() + &id.to_string() + " not finished."
+            });
+    }
+    lock[id] = Job::from(lock[id].clone());
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .json(lock[id].clone())
+}
+
+#[delete("/jobs/{jobid}")]
+pub async fn delete_jobs(delete_job: web::Path<usize>) -> HttpResponse
+{
+    let id = *delete_job;
+    let mut lock = JOB_LIST.lock().await;
+    if id >= lock.len()
+    {
+        return HttpResponse::NotFound()
+        .content_type("application")
+        .json(HttpError {
+            code: 3,
+            reason: "ERR_NOT_FOUND".to_string(),
+            message: "Job ".to_string() + &id.to_string() + " not found."
+        });
+    }
+    if lock[id].state == "Queueing"
+    {
+        lock.remove(id);
+    }
+    else
+    {
+        return HttpResponse::BadRequest()
+        .content_type("application")
+        .json(HttpError {
+            code: 2,
+            reason: "ERR_NOT_FOUND".to_string(),
+            message: "Job ".to_string() + &id.to_string() + " not queueing."
+        });
+    }
+    HttpResponse::Ok().into()
+}
+
 #[post("/jobs")]
 pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) -> HttpResponse
 {
-    //log::info!("Post job: {:?}", post_job);
+    log::info!("Post job: {:?}", post_job);
+
+    let lock = USER_LIST.lock().await;
+    if post_job.user_id >= lock.len()
+    {
+        return HttpResponse::NotFound()
+            .content_type("application")
+            .json(HttpError {
+                code: 3,
+                reason: "ERR_NOT_FOUND".to_string(),
+                message: "User ".to_string() + &post_job.user_id.to_string() + " not found."
+            })
+    }
+    drop(lock);
+
+    if !config.languages.iter().any(|x| x.name == post_job.language)
+    {
+        return HttpResponse::NotFound()
+        .content_type("application")
+        .json(HttpError {
+            code: 3,
+            reason: "ERR_NOT_FOUND".to_string(),
+            message: "Language ".to_string() + &post_job.language + " not found."
+        })
+    }
 
     let mut problem = Problem {
         id: 0,
@@ -142,7 +304,9 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
     lock.push(job.clone());
     drop(lock);
 
-    HttpResponse::Ok().json(job)
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .json(job)
 }
 
 pub async fn job_producer(mut tx: mpsc::Sender<Job>, config: Config)
