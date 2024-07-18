@@ -1,9 +1,10 @@
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use actix_web::{get, post, web, HttpResponse};
 use serde::{Deserialize, Serialize};
 
 use crate::arg::Config;
-use crate::globals::{USER_LIST, JOB_LIST};
+use crate::globals::{CONTEST_LIST, JOB_LIST, USER_LIST};
 use crate::api::error::HttpError;
 use crate::api::user::User;
 
@@ -32,6 +33,30 @@ pub struct RankQuery
 {
     pub scoring_rule: Option<String>,
     pub tie_breaker: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Contest
+{
+    pub id: usize,
+    pub name: String,
+    pub from: String,
+    pub to: String,
+    pub problem_ids: Vec<usize>,
+    pub user_ids: Vec<usize>,
+    pub submission_limit: usize,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PostContest
+{
+    pub id: Option<usize>,
+    pub name: String,
+    pub from: String,
+    pub to: String,
+    pub problem_ids: Vec<usize>,
+    pub user_ids: Vec<usize>,
+    pub submission_limit: usize,
 }
 
 pub fn rank(scoring_rule: &str, x: &FullUserInfo) -> FullUserInfo
@@ -136,17 +161,17 @@ pub async fn get_contests_ranklist(get_contest: web::Path<usize>, query: web::Qu
     let id = *get_contest;
     let user_count = user_list.len();
     let mut full_rank: Vec<FullUserInfo> = Vec::new();
-    for user_id in 0..user_count
+    if id == 0
     {
-        let mut user = FullUserInfo {
-            user_id,
-            problems: Vec::new(),
-            scores: Vec::new(),
-            times: Vec::new(),
-            count: 0,
-        };
-        if id == 0
+        for user_id in 0..user_count
         {
+            let mut user = FullUserInfo {
+                user_id,
+                problems: Vec::new(),
+                scores: Vec::new(),
+                times: Vec::new(),
+                count: 0,
+            };
             for problem in config.problems.iter()
             {
                 let jobs: Vec<Job> = job_list.iter()
@@ -155,12 +180,46 @@ pub async fn get_contests_ranklist(get_contest: web::Path<usize>, query: web::Qu
                     .collect();
                 user.problems.push(jobs);
             }
+            full_rank.push(user);
         }
-        else
+    }
+    else
+    {
+        match CONTEST_LIST.lock().await.get(id - 1)
         {
-            //
+            Some(contest) =>
+            {
+                for user_id in contest.user_ids.iter()
+                {
+                    let mut user = FullUserInfo {
+                        user_id: *user_id,
+                        problems: Vec::new(),
+                        scores: Vec::new(),
+                        times: Vec::new(),
+                        count: 0,
+                    };
+                    for problem_id in contest.problem_ids.iter()
+                    {
+                        let jobs: Vec<Job> = job_list.iter()
+                            .filter(|x| x.submission.problem_id == *problem_id && x.submission.user_id == *user_id)
+                            .cloned()
+                            .collect();
+                        user.problems.push(jobs);
+                    }
+                    full_rank.push(user);
+                }
+            }
+            None =>
+            {
+                return HttpResponse::NotFound()
+                    .content_type("application/json")
+                    .json(HttpError {
+                        code: 3,
+                        reason: "ERR_NOT_FOUND".to_string(),
+                        message: "Contest ".to_string() + &id.to_string() + " not found.",
+                    });
+            }
         }
-        full_rank.push(user);
     }
 
     let mut scoring_rule = "last".to_string();
@@ -207,4 +266,165 @@ pub async fn get_contests_ranklist(get_contest: web::Path<usize>, query: web::Qu
     HttpResponse::Ok()
         .content_type("application/json")
         .json(ranklist)
+}
+
+#[post("/contests")]
+pub async fn post_contests(post_contest: web::Json<PostContest>, config: web::Data<Config>) -> HttpResponse
+{
+    if post_contest.from >= post_contest.to
+    {
+        return HttpResponse::BadRequest()
+            .content_type("application/json")
+            .json(HttpError {
+                code: 1,
+                reason: "ERR_INVALID_ARGUMENT".to_string(),
+                message: "Invalid argument time.".to_string(),
+            });
+    }
+    let user_list = USER_LIST.lock().await;
+    let user_amount = user_list.len();
+    drop(user_list);
+    let mut user_set: HashSet<usize> = HashSet::new();
+    for user_id in post_contest.user_ids.iter()
+    {
+        if !user_set.insert(*user_id)
+        {
+            return HttpResponse::BadRequest()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 1,
+                    reason: "ERR_INVALID_ARGUMENT".to_string(),
+                    message: "Invalid argument user.".to_string(),
+                });
+        }
+        else if *user_id >= user_amount
+        {
+            return HttpResponse::NotFound()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 3,
+                    reason: "ERR_NOT_FOUND".to_string(),
+                    message: "User ".to_string() + &user_id.to_string() + " not found.",
+                });
+        }
+    }
+    let problem_amount = config.problems.len();
+    let mut problem_set: HashSet<usize> = HashSet::new();
+    for problem_id in post_contest.problem_ids.iter()
+    {
+        if !problem_set.insert(*problem_id)
+        {
+            return HttpResponse::BadRequest()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 1,
+                    reason: "ERR_INVALID_ARGUMENT".to_string(),
+                    message: "Invalid argument problem.".to_string(),
+                });
+        }
+        else if *problem_id >= problem_amount
+        {
+            return HttpResponse::NotFound()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 3,
+                    reason: "ERR_NOT_FOUND".to_string(),
+                    message: "Problem ".to_string() + &problem_id.to_string() + " not found.",
+                });
+        }
+    }
+    let mut lock = CONTEST_LIST.lock().await;
+    let max = lock.len();
+    if let Some(id) = post_contest.id
+    {
+        if id > max
+        {
+            return HttpResponse::NotFound()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 3,
+                    reason: "ERR_NOT_FOUND".to_string(),
+                    message: "Contest ".to_string() + &id.to_string() + " not found.",
+                });
+        }
+        else if id == 0
+        {
+            return HttpResponse::BadRequest()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 1,
+                    reason: "ERR_INVALID_ARGUMENT".to_string(),
+                    message: "Invalid contest id.".to_string(),
+                });
+        }
+        else
+        {
+            lock[id - 1] = Contest {
+                id,
+                name: post_contest.name.clone(),
+                from: post_contest.from.clone(),
+                to: post_contest.to.clone(),
+                problem_ids: post_contest.problem_ids.clone(),
+                user_ids: post_contest.user_ids.clone(),
+                submission_limit: post_contest.submission_limit.clone(),
+            };
+            return HttpResponse::Ok()
+                .content_type("application/json")
+                .json(lock[id - 1].clone());
+        }
+    }
+    lock.push(Contest {
+        id: max + 1,
+        name: post_contest.name.clone(),
+        from: post_contest.from.clone(),
+        to: post_contest.to.clone(),
+        problem_ids: post_contest.problem_ids.clone(),
+        user_ids: post_contest.user_ids.clone(),
+        submission_limit: post_contest.submission_limit.clone(),
+    });
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .json(lock[max].clone())
+}
+
+#[get("/contests/{contestid}")]
+pub async fn get_contests_id(get_contest: web::Path<usize>) -> HttpResponse
+{
+    if *get_contest == 0
+    {
+        return HttpResponse::BadRequest()
+            .content_type("application/json")
+            .json(HttpError {
+                code: 1,
+                reason: "ERR_INVALID_ARGUMENT".to_string(),
+                message: "Invalid contest id.".to_string(),
+            });
+    }
+    match CONTEST_LIST.lock().await.get(*get_contest - 1)
+    {
+        Some(contest) =>
+        {
+            return HttpResponse::Ok()
+                .content_type("application/json")
+                .json(contest);
+        }
+        None =>
+        {
+            return HttpResponse::NotFound()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 3,
+                    reason: "ERR_NOT_FOUND".to_string(),
+                    message: "Contest ".to_string() + &get_contest.to_string() + " not found.",
+                })
+        }
+    }
+}
+
+#[get("/contests")]
+pub async fn get_contests() -> HttpResponse
+{
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .json(CONTEST_LIST.lock().await.clone())
 }

@@ -1,22 +1,18 @@
-use actix_web::web::Buf;
 use actix_web::{delete, put, HttpResponse};
-use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
-use clap::builder::Str;
-use env_logger;
+use actix_web::{get, post, web};
 use log;
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use tokio::sync::mpsc;
 use tokio::time;
 use std::process::{Command, ExitStatus, Stdio};
-use std::fs::{create_dir_all, remove_dir_all, File};
-use std::io::{read_to_string, BufRead, BufReader, Error, ErrorKind, Result, Write};
+use tokio::fs::{create_dir_all, remove_dir_all, File, read_to_string};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Error, ErrorKind, Result};
 use chrono::Utc;
-use std::cmp::min;
 use std::time::Duration;
 use wait_timeout::ChildExt;
 
-use crate::globals::{JOB_LIST, USER_LIST};
+use crate::globals::{CONTEST_LIST, JOB_LIST, USER_LIST};
 use crate::arg::{Config, Language, Problem};
 use crate::api::error::HttpError;
 
@@ -265,15 +261,84 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
     }
     drop(lock);
 
+    if post_job.contest_id != 0
+    {
+        match CONTEST_LIST.lock().await.get(post_job.contest_id - 1)
+        {
+            Some(contest) =>
+            {
+                if !contest.user_ids.iter().any(|&x| x == post_job.user_id)
+                {
+                    return HttpResponse::BadRequest()
+                        .content_type("application/json")
+                        .json(HttpError {
+                            code: 1,
+                            reason: "ERR_INVALID_ARGUMENT".to_string(),
+                            message: "User not in contest".to_string(),
+                        });
+                }
+                if !contest.problem_ids.iter().any(|&x| x == post_job.problem_id)
+                {
+                    return HttpResponse::BadRequest()
+                        .content_type("application/json")
+                        .json(HttpError {
+                            code: 1,
+                            reason: "ERR_INVALID_ARGUMENT".to_string(),
+                            message: "Problem not in contest".to_string(),
+                        });
+                }
+                let now = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+                if now < contest.from || now > contest.to
+                {
+                    return HttpResponse::BadRequest()
+                    .content_type("application/json")
+                    .json(HttpError {
+                        code: 1,
+                        reason: "ERR_INVALID_ARGUMENT".to_string(),
+                        message: "Time not in contest".to_string(),
+                    });
+                }
+                let mut count: usize = 0;
+                for job in JOB_LIST.lock().await.iter()
+                {
+                    if job.submission.user_id == post_job.user_id && job.submission.problem_id == post_job.problem_id
+                    {
+                        count += 1;
+                    }
+                }
+                if contest.submission_limit != 0 && contest.submission_limit <= count
+                {
+                    return HttpResponse::BadRequest()
+                        .content_type("application/json")
+                        .json(HttpError {
+                            code: 4,
+                            reason: "ERR_RATE_LIMIT".to_string(),
+                            message: "Too much submission".to_string(),
+                        });
+                }
+            }
+            None =>
+            {
+                return HttpResponse::NotFound()
+                    .content_type("application")
+                    .json(HttpError {
+                        code: 3,
+                        reason: "ERR_NOT_FOUND".to_string(),
+                        message: "Contest ".to_string() + &post_job.contest_id.to_string() + " not found."
+                    });
+            }
+        }
+    }
+
     if !config.languages.iter().any(|x| x.name == post_job.language)
     {
         return HttpResponse::NotFound()
-        .content_type("application")
-        .json(HttpError {
-            code: 3,
-            reason: "ERR_NOT_FOUND".to_string(),
-            message: "Language ".to_string() + &post_job.language + " not found."
-        })
+            .content_type("application")
+            .json(HttpError {
+                code: 3,
+                reason: "ERR_NOT_FOUND".to_string(),
+                message: "Language ".to_string() + &post_job.language + " not found."
+            });
     }
 
     let mut problem = Problem {
@@ -283,7 +348,7 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
         problem_type: String::new(),
         cases: Vec::new(),
     };
-    if let Ok(tmp) = find_problem(&config.problems, post_job.problem_id)
+    if let Ok(tmp) = find_problem(&config.problems, post_job.problem_id).await
     {
         problem = tmp
     }
@@ -309,7 +374,7 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
         .json(job)
 }
 
-pub async fn job_producer(mut tx: mpsc::Sender<Job>, config: Config)
+pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
 {
     loop
     {
@@ -322,15 +387,18 @@ pub async fn job_producer(mut tx: mpsc::Sender<Job>, config: Config)
             {
                 continue;
             }
+            let tx = tx_origin.clone();
+            let config = config_origin.clone();
+            tokio::spawn(async move {
             job.state = "Running".to_string();
             job.result = "Running".to_string();
             job.cases[0].result = "Running".to_string();
             job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
             tx.send(job.clone()).await.unwrap();
             
-            let _ = create_dir_all("./".to_string() + &job.id.to_string());
+            let _ = create_dir_all("./".to_string() + &job.id.to_string()).await;
             let path = "./".to_string() + &job.id.to_string() + "/";
-            let problem = find_problem(&config.problems, job.submission.problem_id).unwrap();
+            let problem = find_problem(&config.problems, job.submission.problem_id).await.unwrap();
 
             match compile_program(&path, &job.submission, &config.languages).await
             {
@@ -349,7 +417,7 @@ pub async fn job_producer(mut tx: mpsc::Sender<Job>, config: Config)
                         job.state = "Finished".to_string();
                         job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                         tx.send(job.clone()).await.unwrap();
-                        continue;
+                        return;
                     }
                 }
                 Err(_) =>
@@ -359,7 +427,7 @@ pub async fn job_producer(mut tx: mpsc::Sender<Job>, config: Config)
                     job.state = "Finished".to_string();
                     job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                     tx.send(job.clone()).await.unwrap();
-                    continue;
+                    return;
                 }
             }
 
@@ -369,10 +437,11 @@ pub async fn job_producer(mut tx: mpsc::Sender<Job>, config: Config)
                 job.cases[count].result = "Running".to_string();
                 job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                 tx.send(job.clone()).await.unwrap();
-                let out_file = File::create(path.clone() + &count.to_string() + ".out").unwrap();
+                let out_file = File::create(path.clone() + &count.to_string() + ".out").await.unwrap();
                 let time_limit = Duration::from_micros(problem.cases[count - 1].time_limit);
+                println!("{:?}", time_limit);
                 let start = Utc::now();
-                match run_case(&path, File::open(case.input_file.clone()).unwrap(), out_file, time_limit).await
+                match run_case(&path, File::open(case.input_file.clone()).await.unwrap(), out_file, time_limit).await
                 {
                     Ok(Some(status)) =>
                     {
@@ -380,35 +449,36 @@ pub async fn job_producer(mut tx: mpsc::Sender<Job>, config: Config)
                         {
                             let end = Utc::now();
                             let duration: u64 = (end - start).num_microseconds().unwrap() as u64;
-                            let output_file = File::open(path.clone() + &count.to_string() + ".out").unwrap();
-                            let output = BufReader::new(output_file);
-                            let mut output_lines: Vec<String> = Vec::new();
-                            let answer_file = File::open(case.answer_file.clone()).unwrap();
-                            let answer = BufReader::new(answer_file);
-                            let mut answer_lines: Vec<String> = Vec::new();
                             let mut same: bool = true;
                             if problem.problem_type == "standard"
                             {
-                                for line in output.lines()
+                                let output_file = File::open(path.clone() + &count.to_string() + ".out").await.unwrap();
+                                let output = BufReader::new(output_file);
+                                let mut output_lines: Vec<String> = Vec::new();
+                                let answer_file = File::open(case.answer_file.clone()).await.unwrap();
+                                let answer = BufReader::new(answer_file);
+                                let mut answer_lines: Vec<String> = Vec::new();
+                                let mut output_iter = output.lines();
+                                while let Some(line) = output_iter.next_line().await.unwrap()
                                 {
-                                    output_lines.push(line.unwrap().trim_end().to_string());
+                                    if line.trim_end() == "" { continue; }
+                                    output_lines.push(line.trim_end().to_string());
                                 }
-                                for line in answer.lines()
+                                let mut answer_iter = answer.lines();
+                                while let Some(line) = answer_iter.next_line().await.unwrap()
                                 {
-                                    answer_lines.push(line.unwrap().trim_end().to_string());
+                                    if line.trim_end() == "" { continue; }
+                                    answer_lines.push(line.trim_end().to_string());
                                 }
-                                for i in 0..min(output_lines.len(), answer_lines.len())
+                                if output_lines != answer_lines
                                 {
-                                    if output_lines[i] != answer_lines[i]
-                                    {
-                                        same = false;
-                                        break;
-                                    }
+                                    same = false;
                                 }
                             }
                             else
                             {
-                                same = read_to_string(output).unwrap() == read_to_string(answer).unwrap();
+                                same = read_to_string(path.clone() + &count.to_string() + ".out").await.unwrap() 
+                                    == read_to_string(case.answer_file.clone()).await.unwrap();
                             }
                             if same
                             {
@@ -445,7 +515,7 @@ pub async fn job_producer(mut tx: mpsc::Sender<Job>, config: Config)
                     Err(_) =>
                     {
                         job.cases[count].result = "Runtime Error".to_string();
-                        job.result = "Runtime Error".to_string();
+                        if job.result == "Running" { job.result = "Runtime Error".to_string(); }
                         job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                         tx.send(job.clone()).await.unwrap();
                     }
@@ -460,7 +530,8 @@ pub async fn job_producer(mut tx: mpsc::Sender<Job>, config: Config)
             job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
             tx.send(job.clone()).await.unwrap();
     
-            let _ = remove_dir_all("./".to_string() + &job.id.to_string());
+            let _ = remove_dir_all("./".to_string() + &job.id.to_string()).await;
+        });
         }
         time::sleep(time::Duration::from_millis(500)).await;
     }
@@ -479,8 +550,8 @@ pub async fn job_consumer(mut rx: mpsc::Receiver<Job>)
 async fn run_case(path: &str, in_file: File, out_file: File, time_limit: Duration) -> Result<Option<ExitStatus>>
 {
     let mut child = Command::new(path.to_string() + "main")
-                    .stdin(Stdio::from(in_file))
-                    .stdout(Stdio::from(out_file))
+                    .stdin(Stdio::from(in_file.into_std().await))
+                    .stdout(Stdio::from(out_file.into_std().await))
                     .stderr(Stdio::null())
                     .spawn()
                     .unwrap();
@@ -509,8 +580,8 @@ async fn compile_program(path: &str, job: &PostJob, languages: &Vec<Language>) -
                 *arg = path.to_string() + "main";
             }
         }
-        let mut src = File::create(path.to_string() + &language.file_name).unwrap();
-        let _ = src.write(job.source_code.as_bytes());
+        let mut src = File::create(path.to_string() + &language.file_name).await.unwrap();
+        let _ = src.write(job.source_code.as_bytes()).await;
         Command::new(command).args(args).status()
     }
     else
@@ -519,7 +590,7 @@ async fn compile_program(path: &str, job: &PostJob, languages: &Vec<Language>) -
     }
 }
 
-fn find_problem(problems: &Vec<Problem>, problem_id: usize) -> Result<Problem>
+async fn find_problem(problems: &Vec<Problem>, problem_id: usize) -> Result<Problem>
 {
     for tmp in problems.clone().into_iter()
     {

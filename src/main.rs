@@ -13,11 +13,8 @@ mod api;
 // DO NOT REMOVE: used in automatic testing
 #[post("/internal/exit")]
 #[allow(unreachable_code)]
-async fn exit(/*shutdown_signal: web::Data<Arc<Mutex<Option<oneshot::Sender<()>>>>>*/) -> impl Responder {
+async fn exit() -> impl Responder {
     log::info!("Shutdown as requested");
-    /*if let Some(shutdown_sender) = shutdown_signal.lock().await.take() {
-        let _ = shutdown_sender.send(());
-    }*/
     std::process::exit(0);
     format!("Exited")
 }
@@ -37,20 +34,20 @@ async fn main() -> std::io::Result<()> {
     task::spawn(job_producer(tx, config.clone()));
     task::spawn(job_consumer(rx));
 
-    /*let (shutdown_sender, shutdown_receiver) = oneshot::channel();
-    let shutdown_signal: Arc<Mutex<Option<oneshot::Sender<()>>>> = Arc::new(Mutex::new(Some(shutdown_sender)));*/
-
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
             .app_data(web::Data::new(config.clone()))
-            //.app_data(web::Data::new(shutdown_signal.clone()))
             .service(api::job::post_jobs)
             .service(api::job::get_jobs_id)
             .service(api::job::get_jobs_query)
             .service(api::job::put_jobs_id)
+            .service(api::job::delete_jobs)
             .service(api::user::post_users)
             .service(api::user::get_users)
+            .service(api::contest::post_contests)
+            .service(api::contest::get_contests)
+            .service(api::contest::get_contests_id)
             .service(api::contest::get_contests_ranklist)
             // DO NOT REMOVE: used in automatic testing
             .service(exit)
@@ -59,14 +56,4 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 
-    /*tokio::select! {
-        _ = server => {
-            //info!("Server has stopped");
-        }
-        _ = shutdown_receiver => {
-            //info!("Received shutdown signal, shutting down server.");
-        }
-    };
-
-    Ok(())*/
 }
