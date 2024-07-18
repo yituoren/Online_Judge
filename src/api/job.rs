@@ -4,13 +4,12 @@ use log;
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use tokio::sync::mpsc;
-use tokio::time;
-use std::process::{Command, ExitStatus, Stdio};
+use tokio::time::{timeout, Duration, self};
+use tokio::process::Command;
+use std::process::{ExitStatus, Stdio};
 use tokio::fs::{create_dir_all, remove_dir_all, File, read_to_string};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Error, ErrorKind, Result};
 use chrono::Utc;
-use std::time::Duration;
-use wait_timeout::ChildExt;
 
 use crate::globals::{CONTEST_LIST, JOB_LIST, USER_LIST};
 use crate::arg::{Config, Language, Problem};
@@ -110,21 +109,23 @@ pub struct JobQuery
 #[get("/jobs/{jobid}")]
 pub async fn get_jobs_id(get_job: web::Path<usize>) -> HttpResponse
 {
-    let id = get_job;
     let lock = JOB_LIST.lock().await;
-    if *id >= lock.len()
+    if let Some(pos) = lock.iter().position(|x| x.id == *get_job)
+    {
+        return HttpResponse::Ok()
+            .content_type("application/json")
+            .json(lock[pos].clone());
+    }
+    else
     {
         return HttpResponse::NotFound()
             .content_type("application/json")
             .json(HttpError {
                 code: 3,
                 reason: "ERR_NOT_FOUND".to_string(),
-                message: "Job ".to_string() + &id.to_string() + " not found."
+                message: "Job ".to_string() + &get_job.to_string() + " not found."
             });
     }
-    HttpResponse::Ok()
-        .content_type("application/json")
-        .json(lock[*id].clone())
 }
 
 #[get("/jobs")]
@@ -183,61 +184,65 @@ pub async fn get_jobs_query(query: web::Query<JobQuery>) -> HttpResponse
 #[put("/jobs/{jobid}")]
 pub async fn put_jobs_id(put_job: web::Path<usize>) -> HttpResponse
 {
-    let id = *put_job;
     let mut lock = JOB_LIST.lock().await;
-    if id >= lock.len()
+    if let Some(pos) = lock.iter().position(|x| x.id == *put_job)
+    {
+        if lock[pos].state != "Finished"
+        {
+            return HttpResponse::BadRequest()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 2,
+                    reason: "ERR_INVALID_STATE".to_string(),
+                    message: "Job ".to_string() + &put_job.to_string() + " not finished."
+                });
+        }
+        lock[pos] = Job::from(lock[pos].clone());
+        return HttpResponse::Ok()
+            .content_type("application/json")
+            .json(lock[pos].clone());
+    }
+    else
     {
         return HttpResponse::NotFound()
             .content_type("application/json")
             .json(HttpError {
                 code: 3,
                 reason: "ERR_NOT_FOUND".to_string(),
-                message: "Job ".to_string() + &id.to_string() + " not found."
+                message: "Job ".to_string() + &put_job.to_string() + " not found."
             });
     }
-    if lock[id].state != "Finished"
-    {
-        return HttpResponse::BadRequest()
-            .content_type("application/json")
-            .json(HttpError {
-                code: 2,
-                reason: "ERR_INVALID_STATE".to_string(),
-                message: "Job ".to_string() + &id.to_string() + " not finished."
-            });
-    }
-    lock[id] = Job::from(lock[id].clone());
-    HttpResponse::Ok()
-        .content_type("application/json")
-        .json(lock[id].clone())
 }
 
 #[delete("/jobs/{jobid}")]
 pub async fn delete_jobs(delete_job: web::Path<usize>) -> HttpResponse
 {
-    let id = *delete_job;
     let mut lock = JOB_LIST.lock().await;
-    if id >= lock.len()
+    if let Some(pos) = lock.iter().position(|x| x.id == *delete_job)
+    {
+        if lock[pos].state == "Queueing"
+        {
+            lock.remove(pos);
+        }
+        else
+        {
+            return HttpResponse::BadRequest()
+                .content_type("application")
+                .json(HttpError {
+                    code: 2,
+                    reason: "ERR_NOT_FOUND".to_string(),
+                    message: "Job ".to_string() + &delete_job.to_string() + " not queueing."
+                });
+        }
+    }
+    else
     {
         return HttpResponse::NotFound()
         .content_type("application")
         .json(HttpError {
             code: 3,
             reason: "ERR_NOT_FOUND".to_string(),
-            message: "Job ".to_string() + &id.to_string() + " not found."
-        });
-    }
-    if lock[id].state == "Queueing"
-    {
-        lock.remove(id);
-    }
-    else
-    {
-        return HttpResponse::BadRequest()
-        .content_type("application")
-        .json(HttpError {
-            code: 2,
-            reason: "ERR_NOT_FOUND".to_string(),
-            message: "Job ".to_string() + &id.to_string() + " not queueing."
+            message: "Job ".to_string() + &delete_job.to_string() + " not found."
         });
     }
     HttpResponse::Ok().into()
@@ -364,7 +369,10 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
     }
 
     let mut lock = JOB_LIST.lock().await;
-    let id = lock.len();
+    let id = match  lock.last() {
+        Some(job) => job.id + 1,
+        None => 0,
+    };
     let job = Job::new(id, post_job.clone(), problem.cases.len());
     lock.push(job.clone());
     drop(lock);
@@ -555,12 +563,22 @@ async fn run_case(path: &str, in_file: File, out_file: File, time_limit: Duratio
                     .stderr(Stdio::null())
                     .spawn()
                     .unwrap();
-    let result = child.wait_timeout(time_limit);
-    if let Ok(None) = result
+    match timeout(time_limit, child.wait()).await
     {
-        child.kill().unwrap();
+        Ok(wait_result) =>
+        {
+            match wait_result
+            {
+                Ok(status) => Ok(Some(status)),
+                Err(error) => Err(error),
+            }
+        }
+        Err(_) =>
+        {
+            let _ = child.kill().await;
+            Ok(None)
+        }
     }
-    result
 }
 
 async fn compile_program(path: &str, job: &PostJob, languages: &Vec<Language>) -> Result<ExitStatus>
@@ -582,7 +600,7 @@ async fn compile_program(path: &str, job: &PostJob, languages: &Vec<Language>) -
         }
         let mut src = File::create(path.to_string() + &language.file_name).await.unwrap();
         let _ = src.write(job.source_code.as_bytes()).await;
-        Command::new(command).args(args).status()
+        Command::new(command).args(args).status().await
     }
     else
     {

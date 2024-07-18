@@ -1,34 +1,39 @@
-use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
+use actix_web::{middleware::Logger, post, web, App, HttpServer, Responder};
 use api::{job::{job_consumer, job_producer, Job}, user::User};
 use env_logger;
-use globals::USER_LIST;
+use globals::{JOB_LIST, USER_LIST};
 use log;
-use tokio::{task, sync::{mpsc, oneshot, Mutex}};
-use std::sync::Arc;
+use tokio::{task, sync::mpsc};
+use rusqlite::Connection;
 
 mod arg;
 mod globals;
 mod api;
+mod sql;
 
 // DO NOT REMOVE: used in automatic testing
 #[post("/internal/exit")]
 #[allow(unreachable_code)]
-async fn exit() -> impl Responder {
+async fn exit() -> impl Responder
+{
     log::info!("Shutdown as requested");
     std::process::exit(0);
     format!("Exited")
 }
 
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> std::io::Result<()>
+{
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+
     let (config, flush) = arg::get_arg()?;
     let address = config.server.bind_address.clone();
     let port = config.server.bind_port;
 
-    let mut lock = USER_LIST.lock().await;
-    lock.push(User { id: 0, name: "root".to_string(), });
-    drop(lock);
+    if flush
+    {
+        
+    }
 
     let (tx, rx) = mpsc::channel::<Job>(32);
     task::spawn(job_producer(tx, config.clone()));
