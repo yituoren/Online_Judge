@@ -7,6 +7,7 @@ use crate::arg::Config;
 use crate::globals::{CONTEST_LIST, JOB_LIST, USER_LIST};
 use crate::api::error::HttpError;
 use crate::api::user::User;
+use crate::sql::{insert_contest, update_contest};
 
 use super::job::Job;
 
@@ -368,12 +369,22 @@ pub async fn post_contests(post_contest: web::Json<PostContest>, config: web::Da
                 user_ids: post_contest.user_ids.clone(),
                 submission_limit: post_contest.submission_limit.clone(),
             };
+            if let Err(_) = update_contest(&lock[id - 1]).await
+            {
+                return HttpResponse::InternalServerError()
+                        .content_type("application/json")
+                        .json(HttpError {
+                            code: 5,
+                            reason: "ERR_EXTERNAL".to_string(),
+                            message: "SQL error".to_string(),
+                        })
+            }
             return HttpResponse::Ok()
                 .content_type("application/json")
                 .json(lock[id - 1].clone());
         }
     }
-    lock.push(Contest {
+    let contest = Contest {
         id: max + 1,
         name: post_contest.name.clone(),
         from: post_contest.from.clone(),
@@ -381,7 +392,18 @@ pub async fn post_contests(post_contest: web::Json<PostContest>, config: web::Da
         problem_ids: post_contest.problem_ids.clone(),
         user_ids: post_contest.user_ids.clone(),
         submission_limit: post_contest.submission_limit.clone(),
-    });
+    };
+    lock.push(contest.clone());
+    if let Err(_) = insert_contest(&contest).await
+    {
+        return HttpResponse::InternalServerError()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 5,
+                    reason: "ERR_EXTERNAL".to_string(),
+                    message: "SQL error".to_string(),
+                })
+    }
     HttpResponse::Ok()
         .content_type("application/json")
         .json(lock[max].clone())

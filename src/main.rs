@@ -1,10 +1,10 @@
 use actix_web::{middleware::Logger, post, web, App, HttpServer, Responder};
 use api::{job::{job_consumer, job_producer, Job}, user::User};
 use env_logger;
-use globals::{JOB_LIST, USER_LIST};
+use globals::{CONTEST_LIST, DATABASE, JOB_LIST, USER_LIST};
 use log;
+use sql::{create_tables, drop_all_tables, read_contests, read_jobs, read_users};
 use tokio::{task, sync::mpsc};
-use rusqlite::Connection;
 
 mod arg;
 mod globals;
@@ -29,11 +29,17 @@ async fn main() -> std::io::Result<()>
     let (config, flush) = arg::get_arg()?;
     let address = config.server.bind_address.clone();
     let port = config.server.bind_port;
+    println!("{}", flush);
 
     if flush
     {
-        
+        let _ = drop_all_tables().await;
     }
+
+    let _ = create_tables().await;
+    let _ = read_jobs().await;
+    let _ = read_contests().await;
+    let _ = read_users().await;
 
     let (tx, rx) = mpsc::channel::<Job>(32);
     task::spawn(job_producer(tx, config.clone()));
@@ -43,6 +49,7 @@ async fn main() -> std::io::Result<()>
         App::new()
             .wrap(Logger::default())
             .app_data(web::Data::new(config.clone()))
+            .app_data(web::Data::new(flush))
             .service(api::job::post_jobs)
             .service(api::job::get_jobs_id)
             .service(api::job::get_jobs_query)

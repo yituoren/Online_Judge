@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::globals::USER_LIST;
 use crate::api::error::HttpError;
+use crate::sql::{insert_user, update_user};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User
@@ -47,12 +48,34 @@ pub async fn post_users(post_user: web::Json<PostUser>) -> HttpResponse
         else
         {
             lock[id].name = post_user.name.clone();
+
+            if let Err(_) = update_user(&lock[id]).await
+            {
+                return HttpResponse::InternalServerError()
+                        .content_type("application/json")
+                        .json(HttpError {
+                            code: 5,
+                            reason: "ERR_EXTERNAL".to_string(),
+                            message: "SQL error".to_string(),
+                        })
+            }
             return HttpResponse::Ok()
                 .content_type("application/json")
                 .json(lock[id].clone());
         }
     }
-    lock.push(User { id: max, name: post_user.name.clone(), });
+    let user = User { id: max, name: post_user.name.clone(), };
+    lock.push(user.clone());
+    if let Err(_) = insert_user(&user).await
+    {
+        return HttpResponse::InternalServerError()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 5,
+                    reason: "ERR_EXTERNAL".to_string(),
+                    message: "SQL error".to_string(),
+                })
+    }
     HttpResponse::Ok()
         .content_type("application/json")
         .json(lock[max].clone())

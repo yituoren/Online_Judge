@@ -14,6 +14,7 @@ use chrono::Utc;
 use crate::globals::{CONTEST_LIST, JOB_LIST, USER_LIST};
 use crate::arg::{Config, Language, Problem};
 use crate::api::error::HttpError;
+use crate::sql::{insert_job, update_job};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PostJob
@@ -198,6 +199,16 @@ pub async fn put_jobs_id(put_job: web::Path<usize>) -> HttpResponse
                 });
         }
         lock[pos] = Job::from(lock[pos].clone());
+        if let Err(_) = update_job(&lock[pos]).await
+        {
+            return HttpResponse::InternalServerError()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 5,
+                    reason: "ERR_EXTERNAL".to_string(),
+                    message: "SQL error".to_string(),
+                })
+        }
         return HttpResponse::Ok()
             .content_type("application/json")
             .json(lock[pos].clone());
@@ -223,6 +234,16 @@ pub async fn delete_jobs(delete_job: web::Path<usize>) -> HttpResponse
         if lock[pos].state == "Queueing"
         {
             lock.remove(pos);
+            if let Err(_) = crate::sql::delete_job(*delete_job).await
+            {
+                return HttpResponse::InternalServerError()
+                    .content_type("application/json")
+                    .json(HttpError {
+                        code: 5,
+                        reason: "ERR_EXTERNAL".to_string(),
+                        message: "SQL error".to_string(),
+                    })
+            }
         }
         else
         {
@@ -375,6 +396,16 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
     };
     let job = Job::new(id, post_job.clone(), problem.cases.len());
     lock.push(job.clone());
+    if let Err(_) = insert_job(&job).await
+    {
+        return HttpResponse::InternalServerError()
+                .content_type("application/json")
+                .json(HttpError {
+                    code: 5,
+                    reason: "ERR_EXTERNAL".to_string(),
+                    message: "SQL error".to_string(),
+                })
+    }
     drop(lock);
 
     HttpResponse::Ok()
@@ -447,7 +478,6 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                 tx.send(job.clone()).await.unwrap();
                 let out_file = File::create(path.clone() + &count.to_string() + ".out").await.unwrap();
                 let time_limit = Duration::from_micros(problem.cases[count - 1].time_limit);
-                println!("{:?}", time_limit);
                 let start = Utc::now();
                 match run_case(&path, File::open(case.input_file.clone()).await.unwrap(), out_file, time_limit).await
                 {
@@ -551,6 +581,7 @@ pub async fn job_consumer(mut rx: mpsc::Receiver<Job>)
     {
         let mut lock = JOB_LIST.lock().await;
         lock[job.id] = job.clone();
+        let _ = update_job(&job).await;
         drop(lock);
     }
 }
