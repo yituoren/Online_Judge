@@ -1,10 +1,10 @@
 use actix_web::{middleware::Logger, post, web, App, HttpServer, Responder};
-use api::{job::{job_consumer, job_producer, Job}, user::User};
+use api::job::{job_consumer, job_producer, Job};
 use env_logger;
-use globals::{CONTEST_LIST, DATABASE, JOB_LIST, USER_LIST};
 use log;
 use sql::{create_tables, drop_all_tables, read_contests, read_jobs, read_users};
 use tokio::{task, sync::mpsc};
+use actix_cors::Cors;
 
 mod arg;
 mod globals;
@@ -48,6 +48,12 @@ async fn main() -> std::io::Result<()>
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allow_any_method()
+                    .allow_any_header()
+            )
             .app_data(web::Data::new(config.clone()))
             .app_data(web::Data::new(flush))
             .service(api::job::post_jobs)
