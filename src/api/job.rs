@@ -456,6 +456,7 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                         job.state = "Finished".to_string();
                         job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                         tx.send(job.clone()).await.unwrap();
+                        let _ = remove_dir_all("./".to_string() + &job.id.to_string()).await;
                         return;
                     }
                 }
@@ -466,6 +467,7 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                     job.state = "Finished".to_string();
                     job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                     tx.send(job.clone()).await.unwrap();
+                    let _ = remove_dir_all("./".to_string() + &job.id.to_string()).await;
                     return;
                 }
             }
