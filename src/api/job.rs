@@ -4,12 +4,15 @@ use log;
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use tokio::sync::mpsc;
+use tokio::task;
 use tokio::time::{timeout, Duration, self};
 use tokio::process::Command;
+use std::os::unix::process::ExitStatusExt;
 use std::process::{ExitStatus, Stdio};
 use tokio::fs::{create_dir_all, remove_dir_all, File, read_to_string};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Error, ErrorKind, Result};
 use chrono::Utc;
+use libc::{wait4, rusage};
 
 use crate::globals::{CONTEST_LIST, JOB_LIST, USER_LIST};
 use crate::arg::{Config, Language, Problem};
@@ -478,14 +481,13 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                 job.cases[count].result = "Running".to_string();
                 job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                 tx.send(job.clone()).await.unwrap();
-                let out_file = File::create(path.clone() + &count.to_string() + ".out").await.unwrap();
-                let time_limit = Duration::from_micros(problem.cases[count - 1].time_limit);
                 let start = Utc::now();
-                match run_case(&path, File::open(case.input_file.clone()).await.unwrap(), out_file, time_limit).await
+                let mut memory: u64 = 0;
+                match run_case(&path, &case.input_file, &(path.clone() + &count.to_string() + ".out"), problem.cases[count - 1].time_limit, problem.cases[count - 1].memory_limit, &mut memory).await
                 {
-                    Ok(Some(status)) =>
+                    Some(status) =>
                     {
-                        if status.success()
+                        if status == 0
                         {
                             let end = Utc::now();
                             let duration: u64 = (end - start).num_microseconds().unwrap() as u64;
@@ -524,6 +526,7 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                             {
                                 job.cases[count].result = "Accepted".to_string();
                                 job.cases[count].time = duration;
+                                job.cases[count].memory = memory;
                                 job.score += problem.cases[count - 1].score;
                                 job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                                 tx.send(job.clone()).await.unwrap();
@@ -532,10 +535,18 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                             {
                                 job.cases[count].result = "Wrong Answer".to_string();
                                 job.cases[count].time = duration;
+                                job.cases[count].memory = memory;
                                 if job.result == "Running" { job.result = "Wrong Answer".to_string(); }
                                 job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                                 tx.send(job.clone()).await.unwrap();
                             }
+                        }
+                        else if status == -1
+                        {
+                            job.cases[count].result = "Memory Limit Exceeded".to_string();
+                            if job.result == "Running" { job.result = "Memory Limit Exceeded".to_string(); }
+                            job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+                            tx.send(job.clone()).await.unwrap();
                         }
                         else
                         {
@@ -545,17 +556,10 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                             tx.send(job.clone()).await.unwrap();
                         }
                     }
-                    Ok(None) =>
+                    None =>
                     {
                         job.cases[count].result = "Time Limit Exceeded".to_string();
                         if job.result == "Running" { job.result = "Time Limit Exceeded".to_string(); }
-                        job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
-                        tx.send(job.clone()).await.unwrap();
-                    }
-                    Err(_) =>
-                    {
-                        job.cases[count].result = "Runtime Error".to_string();
-                        if job.result == "Running" { job.result = "Runtime Error".to_string(); }
                         job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                         tx.send(job.clone()).await.unwrap();
                     }
@@ -588,29 +592,44 @@ pub async fn job_consumer(mut rx: mpsc::Receiver<Job>)
     }
 }
 
-async fn run_case(path: &str, in_file: File, out_file: File, time_limit: Duration) -> Result<Option<ExitStatus>>
+async fn run_case(path: &str, in_file: &str, out_file: &str, time_limit: u64, memory_limit: u64, memory: &mut u64) -> Option<i64>
 {
-    let mut child = Command::new(path.to_string() + "main")
-                    .stdin(Stdio::from(in_file.into_std().await))
-                    .stdout(Stdio::from(out_file.into_std().await))
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .unwrap();
-    match timeout(time_limit, child.wait()).await
+    match Command::new("./run")
+        .arg("-p")
+        .arg(path)
+        .arg("-i")
+        .arg(in_file)
+        .arg("-o")
+        .arg(out_file)
+        .arg("-t")
+        .arg(time_limit.to_string())
+        .arg("-m")
+        .arg(memory_limit.to_string())
+        .stdout(File::create(path.to_string() + "run.out").await.unwrap().into_std().await)
+        .spawn()
+        .unwrap()
+        .wait()
+        .await
     {
-        Ok(wait_result) =>
-        {
-            match wait_result
-            {
-                Ok(status) => Ok(Some(status)),
-                Err(error) => Err(error),
-            }
-        }
-        Err(_) =>
-        {
-            let _ = child.kill().await;
-            Ok(None)
-        }
+        Ok(_) => (),
+        Err(_) => return Some(-1),
+    }
+
+    let result_file = File::open(path.to_string() + "run.out").await.unwrap();
+    let mut reader = BufReader::new(result_file).lines();
+    let mut result: Vec<i64> = Vec::new();
+    while let Some(line) = reader.next_line().await.unwrap()
+    {
+        result.push(line.trim().parse().unwrap());
+    }
+    if result.is_empty()
+    {
+        None
+    }
+    else
+    {
+        *memory = result[1] as u64;
+        Some(result[0])
     }
 }
 

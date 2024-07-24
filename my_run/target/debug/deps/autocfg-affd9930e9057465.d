@@ -1,0 +1,10 @@
+/home/yituoren/workplace/rust/oj-zhaor23/my_run/target/debug/deps/libautocfg-affd9930e9057465.rmeta: /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/lib.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/error.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/rustc.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/version.rs
+
+/home/yituoren/workplace/rust/oj-zhaor23/my_run/target/debug/deps/libautocfg-affd9930e9057465.rlib: /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/lib.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/error.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/rustc.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/version.rs
+
+/home/yituoren/workplace/rust/oj-zhaor23/my_run/target/debug/deps/autocfg-affd9930e9057465.d: /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/lib.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/error.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/rustc.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/version.rs
+
+/home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/lib.rs:
+/home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/error.rs:
+/home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/rustc.rs:
+/home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/autocfg-1.3.0/src/version.rs:

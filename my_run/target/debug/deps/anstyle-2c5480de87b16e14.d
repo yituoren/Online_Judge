@@ -1,0 +1,10 @@
+/home/yituoren/workplace/rust/oj-zhaor23/my_run/target/debug/deps/libanstyle-2c5480de87b16e14.rmeta: /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/lib.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/macros.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/color.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/effect.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/reset.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/style.rs
+
+/home/yituoren/workplace/rust/oj-zhaor23/my_run/target/debug/deps/anstyle-2c5480de87b16e14.d: /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/lib.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/macros.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/color.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/effect.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/reset.rs /home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/style.rs
+
+/home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/lib.rs:
+/home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/macros.rs:
+/home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/color.rs:
+/home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/effect.rs:
+/home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/reset.rs:
+/home/yituoren/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-2eab394af869c8a2/anstyle-1.0.7/src/style.rs:
