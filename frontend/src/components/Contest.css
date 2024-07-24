@@ -1,0 +1,56 @@
+.contest-form button {
+    margin-left: 400px;
+    margin-right: 10px;
+    padding: 15px 30px;
+    font-size: 18px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  
+  .contest-form button:hover {
+    background-color: #218838;
+  }
+  
+  .contest-id button {
+    margin-left: 30px;
+    margin-right: 10px;
+    padding: 15px 30px;
+    font-size: 18px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  
+  .contest-id button:hover {
+    background-color: #218838;
+  }
+  
+  .contest-form input {
+    margin: 10px;
+    padding: 15px;
+    font-size: 18px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }
+  
+  .contest-id input {
+    margin: 10px;
+    padding: 15px;
+    font-size: 18px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }
+
+  .contest-id select {
+    margin: 10px;
+    padding: 15px;
+    font-size: 18px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color: #ffffff;
+  }

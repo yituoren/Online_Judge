@@ -1,0 +1,125 @@
+body {
+  font-family: Arial, sans-serif;
+  background-color: #ffffff;
+  margin: 0;
+  padding: 0;
+}
+
+.App {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 200px;
+  background-color: #333;
+  color: white;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  width: 100%;
+}
+
+.sidebar li {
+  width: 100%;
+  text-align: center;
+  margin: 10px 0;
+}
+
+.sidebar a {
+  color: white;
+  text-decoration: none;
+  display: block;
+  width: 100%;
+  padding: 10px 0;
+}
+
+.sidebar a:hover {
+  background-color: #575757;
+}
+
+.main-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  background-color: #fff;
+  margin-left: 20px; /* 增加左侧边距 */
+  margin-top: 50px;
+}
+
+.response-message {
+  margin-top: 30px; /* 减小与上方输入框的距离 */
+  padding: 20px;
+  font-size: 18px;
+  color: #333;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  display: flex;
+}
+
+.response-message .left-column,
+.response-message .right-column {
+  flex: 1;
+  padding: 10px;
+}
+
+.response-message .response-row {
+  display: flex;
+  padding: 10px 0;
+  border-bottom: 1px solid #ccc;
+}
+
+.response-message .response-row:last-child {
+  border-bottom: none;
+}
+
+.response-message .response-key {
+  flex: 1;
+  font-weight: bold;
+}
+
+.response-message .response-value {
+  flex: 2;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.empty-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  font-size: 24px;
+  color: #666;
+}
+
+.left-col {
+  flex: 1;
+  display: flex;
+  align-items: top;
+  justify-content: left;
+  padding: 20px;
+  margin-left: 100px;
+}
+
+.right-col {
+  flex: 1;
+  display: flex;
+  align-items: top;
+  justify-content: left;
+  padding: 20px;
+  margin-left: 100px;
+}
+
+.form-container {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}

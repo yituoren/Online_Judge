@@ -1,0 +1,47 @@
+.get-form button {
+    margin-top: 20px;
+    margin-left: 380px;
+    padding: 15px 30px;
+    font-size: 18px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  
+  .get-form button:hover {
+    background-color: #218838;
+  }
+  
+  .get-id button {
+    margin-left: 400px;
+    margin-right: 10px;
+    padding: 15px 30px;
+    font-size: 18px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  
+  .get-id button:hover {
+    background-color: #218838;
+  }
+  
+  .get-form input {
+    margin: 10px;
+    padding: 15px;
+    font-size: 18px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }
+  
+  .get-id input {
+    margin: 10px;
+    padding: 15px;
+    font-size: 18px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }

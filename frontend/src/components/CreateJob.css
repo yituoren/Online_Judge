@@ -1,0 +1,52 @@
+.job-form {
+    display: flex;
+    justify-content: space-between;
+    flex: 0.5; /* 使表单区域占据剩余的空间 */
+  }
+  
+  .input-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1; /* 使输入区域占据上半部分 */
+  }
+  
+  .job-form input,
+  textarea {
+    margin: 10px;
+    padding: 15px;
+    font-size: 18px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }
+  
+  .job-form button {
+    margin-top: 20px;
+    padding: 15px 30px;
+    font-size: 18px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  
+  .job-form button:hover {
+    background-color: #218838;
+  }
+  
+  textarea {
+    width: 100%; /* 使文本区域宽度为100% */
+    max-width: 100%; /* 确保宽度不超过容器 */
+    height: 350px;
+    resize: none;
+  }
+
+  .home-page {
+    padding: 20px;
+    max-width: none; /* 移除最大宽度限制 */
+    margin: 0; /* 移除外边距 */
+    height: 100%; /* 确保容器高度为100% */
+    display: flex;
+    flex-direction: column;
+  }
