@@ -86,7 +86,6 @@ pub async fn read_jobs() -> Result<()>
 
     let mut lock = JOB_LIST.lock().await;
     *lock = jobs?;
-    println!("{:?}", lock);
 
     Ok(())
 }
@@ -111,7 +110,6 @@ pub async fn read_contests() -> Result<()>
 
     let mut lock = CONTEST_LIST.lock().await;
     *lock = contests?;
-    println!("{:?}", lock);
     
     Ok(())
 }
@@ -146,7 +144,6 @@ pub async fn read_users() -> Result<()>
             ]
         );
     }
-    println!("{:?}", lock);
     
     Ok(())
 }

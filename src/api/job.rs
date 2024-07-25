@@ -648,7 +648,10 @@ async fn run_case(path: &str, in_file: &str, out_file: &str, time_limit: u64, me
     }
     else
     {
-        *memory = result[1] as u64;
+        if result[0] == 0
+        {
+            *memory = result[1] as u64;
+        }
         Some(result[0])
     }
 }
