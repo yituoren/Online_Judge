@@ -8,20 +8,25 @@ use clap::{Arg, self};
 
 async fn run_case(path: &str, in_file: File, out_file: File, time_limit: Duration, memory_limit: u64, memory: &mut u64) -> Option<i32>
 {
+    //limit memory
     if memory_limit != 0
     {
         let _ = set_memory_limit(memory_limit);
     }
 
+    //run the code
     let mut child = Command::new(path.to_string() + "main")
         .stdin(Stdio::from(in_file.into_std().await))
         .stdout(Stdio::from(out_file.into_std().await))
         .stderr(Stdio::null())
         .spawn();
+
     let mut pid: i32 = 0;
+    //MLE
     if child.is_err()
     {
         println!("-1");
+        return None;
     }
     else
     {
@@ -34,7 +39,7 @@ async fn run_case(path: &str, in_file: File, out_file: File, time_limit: Duratio
         {
             Some(result)
         }
-        Err(_) =>
+        Err(_) => //TLE
         {
             let _ = child.unwrap().kill().await;
             None
@@ -44,8 +49,8 @@ async fn run_case(path: &str, in_file: File, out_file: File, time_limit: Duratio
 
 fn set_memory_limit(memory_limit: u64) -> std::io::Result<()> {
     let rlim = rlimit {
-        rlim_cur: memory_limit, // 当前限制（以字节为单位）
-        rlim_max: memory_limit, // 最大限制（以字节为单位）
+        rlim_cur: memory_limit,
+        rlim_max: memory_limit,
     };
 
     unsafe
@@ -58,6 +63,7 @@ fn set_memory_limit(memory_limit: u64) -> std::io::Result<()> {
     Ok(())
 }
 
+//this function aims to change wait4() to an async function and make it non-blocking
 async fn waitfor(pid: i32, memory: &mut u64) -> i32
 {
     let (result, maxrss) = task::spawn_blocking(move || {
@@ -73,6 +79,7 @@ async fn waitfor(pid: i32, memory: &mut u64) -> i32
 #[tokio::main]
 async fn main()
 {
+    //ask for command line
     let args = clap::Command::new("OJ")
         .arg(Arg::new("path")
             .short('p')
@@ -110,6 +117,7 @@ async fn main()
 
     match run_case(path, in_file, out_file, time_limit, memory_limit, &mut memory).await
     {
+        //pass the status
         Some(status) =>
         {
             println!("{}", status);
