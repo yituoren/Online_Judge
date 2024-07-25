@@ -11,6 +11,7 @@ use crate::sql::{insert_contest, update_contest};
 
 use super::job::Job;
 
+//used to respond
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct UserRank
 {
@@ -19,6 +20,7 @@ pub struct UserRank
     pub scores: Vec<f64>,
 }
 
+//used to compare
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FullUserInfo
 {
@@ -60,6 +62,7 @@ pub struct PostContest
     pub submission_limit: usize,
 }
 
+//fetch the info for comparing
 pub fn rank(scoring_rule: &str, x: &FullUserInfo) -> FullUserInfo
 {
     let mut a = x.clone();
@@ -106,6 +109,7 @@ pub fn rank(scoring_rule: &str, x: &FullUserInfo) -> FullUserInfo
     a
 }
 
+//compare function
 pub fn cmp_rank(tie_breaker: &str, a: &FullUserInfo, b: &FullUserInfo) -> Ordering
 {
     let a_total: f64 = a.scores.iter().sum();
@@ -149,6 +153,7 @@ pub fn cmp_rank(tie_breaker: &str, a: &FullUserInfo, b: &FullUserInfo) -> Orderi
     }
 }
 
+//get ranklist
 #[get("/contests/{contestid}/ranklist")]
 pub async fn get_contests_ranklist(get_contest: web::Path<usize>, query: web::Query<RankQuery>, config: web::Data<Config>) -> HttpResponse
 {
@@ -162,6 +167,7 @@ pub async fn get_contests_ranklist(get_contest: web::Path<usize>, query: web::Qu
     let id = *get_contest;
     let user_count = user_list.len();
     let mut full_rank: Vec<FullUserInfo> = Vec::new();
+    //whole rank
     if id == 0
     {
         for user_id in 0..user_count
@@ -184,6 +190,7 @@ pub async fn get_contests_ranklist(get_contest: web::Path<usize>, query: web::Qu
             full_rank.push(user);
         }
     }
+    //spec contest rank
     else
     {
         match CONTEST_LIST.lock().await.get(id - 1)
@@ -199,6 +206,7 @@ pub async fn get_contests_ranklist(get_contest: web::Path<usize>, query: web::Qu
                         times: Vec::new(),
                         count: 0,
                     };
+                    //find all submission of a user
                     for problem_id in contest.problem_ids.iter()
                     {
                         let jobs: Vec<Job> = job_list.iter()
@@ -239,6 +247,7 @@ pub async fn get_contests_ranklist(get_contest: web::Path<usize>, query: web::Qu
         .collect();
     after_rank.sort_by(|x, y| cmp_rank(&tie_breaker, x, y));
 
+    //trim the rank result and deal with same-rank situation
     let mut ranklist: Vec<UserRank> = Vec::new();
     let mut count: usize = 1;
     let mut rank: usize = 1;
@@ -282,6 +291,8 @@ pub async fn post_contests(post_contest: web::Json<PostContest>, config: web::Da
                 message: "Invalid argument time.".to_string(),
             });
     }
+
+    //check for repeated user
     let user_list = USER_LIST.lock().await;
     let user_amount = user_list.len();
     drop(user_list);
@@ -309,6 +320,7 @@ pub async fn post_contests(post_contest: web::Json<PostContest>, config: web::Da
                 });
         }
     }
+    //check for repeated problem
     let problem_amount = config.problems.len();
     let mut problem_set: HashSet<usize> = HashSet::new();
     for problem_id in post_contest.problem_ids.iter()
@@ -336,6 +348,7 @@ pub async fn post_contests(post_contest: web::Json<PostContest>, config: web::Da
     }
     let mut lock = CONTEST_LIST.lock().await;
     let max = lock.len();
+    //update contest
     if let Some(id) = post_contest.id
     {
         if id > max
@@ -384,6 +397,7 @@ pub async fn post_contests(post_contest: web::Json<PostContest>, config: web::Da
                 .json(lock[id - 1].clone());
         }
     }
+    //new contest
     let contest = Contest {
         id: max + 1,
         name: post_contest.name.clone(),

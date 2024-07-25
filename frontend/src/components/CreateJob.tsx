@@ -37,6 +37,7 @@ const CreateJob: React.FC = () => {
   const [responseMessage, setResponseMessage] = useState<Job | null>(null);
   const [error, setError] = useState<any>(null);
 
+  //functions for click and input
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setJob(prevJob => ({
@@ -74,6 +75,7 @@ const CreateJob: React.FC = () => {
     }
   };
 
+  //response component
   const renderJob = (job: Job) => {
     return (
         <div className="response-message">
@@ -124,8 +126,25 @@ const CreateJob: React.FC = () => {
                 ))}
             </div>
         </div>
-    )
-}
+      )
+  }
+
+  //error component
+  const renderError = (error: any) => {
+    return (
+        <div className="response-message">
+            <div className="left-column">
+            {Object.entries(error)
+                .map(([key, value], index) => (
+                <div className="response-row" key={index}>
+                    <div className="response-key">{key}:</div>
+                    <div className="response-value">{JSON.stringify(value, null, 2)}</div>
+                </div>
+                ))}
+            </div>
+        </div>
+      )
+  }
 
   return (
     <div className="home-page">
@@ -169,7 +188,7 @@ const CreateJob: React.FC = () => {
         />
       </form>
       {responseMessage && renderJob(responseMessage)}
-      {error && reportError(error)}
+      {error && renderError(error)}
     </div>
   );
 };

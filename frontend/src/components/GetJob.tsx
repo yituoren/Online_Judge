@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import jobService from '../services/jobService';
 import './GetJob.css';
 
+//response
 interface Job {
     id: number,
     created_time: string,
@@ -26,6 +27,7 @@ interface Job {
 }
 
 const GetJob: React.FC = () => {
+    //1 for joblist query, 2 for job by id
     const [responseMessage1, setResponseMessage1] = useState<Job[]>([]);
     const [responseMessage2, setResponseMessage2] = useState<Job | null>(null);
     const [error1, setError1] = useState<any>(null);
@@ -44,6 +46,7 @@ const GetJob: React.FC = () => {
         result: '',
     })
 
+    //functions for click and input
     const handleSubmit1 = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
@@ -88,6 +91,7 @@ const GetJob: React.FC = () => {
         }));
     }
 
+    //response component
     const renderJob = (job: Job) => {
         return (
             <div className="response-message">
@@ -141,6 +145,7 @@ const GetJob: React.FC = () => {
         )
     }
 
+    //error component
     const renderError = (error: any) => {
         return (
             <div className="response-message">

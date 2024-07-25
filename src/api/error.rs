@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+//my httperror type
 #[derive(Debug, Serialize)]
 pub struct HttpError
 {

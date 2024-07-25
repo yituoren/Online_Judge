@@ -26,11 +26,12 @@ async fn main() -> std::io::Result<()>
 {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
+    //read command line
     let (config, flush) = arg::get_arg()?;
     let address = config.server.bind_address.clone();
     let port = config.server.bind_port;
-    println!("{}", flush);
 
+    //sql
     if flush
     {
         let _ = drop_all_tables().await;
@@ -41,6 +42,7 @@ async fn main() -> std::io::Result<()>
     let _ = read_contests().await;
     let _ = read_users().await;
 
+    //用于非阻塞评测和更新的异步线程
     let (tx, rx) = mpsc::channel::<Job>(32);
     task::spawn(job_producer(tx, config.clone()));
     task::spawn(job_consumer(rx));
@@ -48,6 +50,7 @@ async fn main() -> std::io::Result<()>
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
+            //allow web requests
             .wrap(
                 Cors::default()
                     .allow_any_origin()
@@ -55,7 +58,6 @@ async fn main() -> std::io::Result<()>
                     .allow_any_header()
             )
             .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(flush))
             .service(api::job::post_jobs)
             .service(api::job::get_jobs_id)
             .service(api::job::get_jobs_query)

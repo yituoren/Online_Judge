@@ -1,18 +1,14 @@
 use actix_web::{delete, put, HttpResponse};
 use actix_web::{get, post, web};
-use log;
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use tokio::sync::mpsc;
-use tokio::task;
-use tokio::time::{timeout, Duration, self};
+use tokio::time;
 use tokio::process::Command;
-use std::os::unix::process::ExitStatusExt;
-use std::process::{ExitStatus, Stdio};
+use std::process::ExitStatus;
 use tokio::fs::{create_dir_all, remove_dir_all, File, read_to_string};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Error, ErrorKind, Result};
 use chrono::Utc;
-use libc::{wait4, rusage};
 
 use crate::globals::{CONTEST_LIST, JOB_LIST, USER_LIST};
 use crate::arg::{Config, Language, Problem};
@@ -110,6 +106,7 @@ pub struct JobQuery
     result: Option<String>,
 }
 
+//gets
 #[get("/jobs/{jobid}")]
 pub async fn get_jobs_id(get_job: web::Path<usize>) -> HttpResponse
 {
@@ -185,6 +182,7 @@ pub async fn get_jobs_query(query: web::Query<JobQuery>) -> HttpResponse
         .json(job_list)
 }
 
+//update & delete
 #[put("/jobs/{jobid}")]
 pub async fn put_jobs_id(put_job: web::Path<usize>) -> HttpResponse
 {
@@ -272,11 +270,12 @@ pub async fn delete_jobs(delete_job: web::Path<usize>) -> HttpResponse
     HttpResponse::Ok().into()
 }
 
+//submit
 #[post("/jobs")]
 pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) -> HttpResponse
 {
-    log::info!("Post job: {:?}", post_job);
 
+    //wrong user
     let lock = USER_LIST.lock().await;
     if post_job.user_id >= lock.len()
     {
@@ -290,6 +289,7 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
     }
     drop(lock);
 
+    //wrong contest
     if post_job.contest_id != 0
     {
         match CONTEST_LIST.lock().await.get(post_job.contest_id - 1)
@@ -359,6 +359,7 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
         }
     }
 
+    //wrong language
     if !config.languages.iter().any(|x| x.name == post_job.language)
     {
         return HttpResponse::NotFound()
@@ -370,6 +371,7 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
             });
     }
 
+    //find the problem
     let mut problem = Problem {
         id: 0,
         name: String::new(),
@@ -392,8 +394,10 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
             });
     }
 
+    //put the job in the test queue
     let mut lock = JOB_LIST.lock().await;
-    let id = match  lock.last() {
+    let id = match lock.last()
+    {
         Some(job) => job.id + 1,
         None => 0,
     };
@@ -416,8 +420,10 @@ pub async fn post_jobs(post_job: web::Json<PostJob>, config: web::Data<Config>) 
         .json(job)
 }
 
+//test function
 pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
 {
+    //check the test queue again and again
     loop
     {
         let lock = JOB_LIST.lock().await;
@@ -425,23 +431,28 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
         drop(lock);
         for mut job in job_list.into_iter()
         {
+            //find jobs that need test
             if job.state != "Queueing"
             {
                 continue;
             }
             let tx = tx_origin.clone();
             let config = config_origin.clone();
+            //并行测评的异步线程
             tokio::spawn(async move {
             job.state = "Running".to_string();
             job.result = "Running".to_string();
             job.cases[0].result = "Running".to_string();
             job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+            //once updated, send to receiver to update the queue
             tx.send(job.clone()).await.unwrap();
             
-            let _ = create_dir_all("./".to_string() + &job.id.to_string()).await;
-            let path = "./".to_string() + &job.id.to_string() + "/";
+            //create tmp dir for test
+            let _ = create_dir_all("./tmp_code_runner/".to_string() + &job.id.to_string()).await;
+            let path = "./tmp_code_runner/".to_string() + &job.id.to_string() + "/";
             let problem = find_problem(&config.problems, job.submission.problem_id).await.unwrap();
 
+            //compilation
             match compile_program(&path, &job.submission, &config.languages).await
             {
                 Ok(status) =>
@@ -459,7 +470,7 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                         job.state = "Finished".to_string();
                         job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                         tx.send(job.clone()).await.unwrap();
-                        let _ = remove_dir_all("./".to_string() + &job.id.to_string()).await;
+                        let _ = remove_dir_all("./tmp_code_runner/".to_string() + &job.id.to_string()).await;
                         return;
                     }
                 }
@@ -470,11 +481,12 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                     job.state = "Finished".to_string();
                     job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                     tx.send(job.clone()).await.unwrap();
-                    let _ = remove_dir_all("./".to_string() + &job.id.to_string()).await;
+                    let _ = remove_dir_all("./tmp_code_runner/".to_string() + &job.id.to_string()).await;
                     return;
                 }
             }
 
+            //test cases
             let mut count: usize = 1;
             for case in problem.cases.iter()
             {
@@ -487,11 +499,12 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                 {
                     Some(status) =>
                     {
-                        if status == 0
+                        if status == 0 //normal exit
                         {
                             let end = Utc::now();
                             let duration: u64 = (end - start).num_microseconds().unwrap() as u64;
                             let mut same: bool = true;
+                            //compare answer
                             if problem.problem_type == "standard"
                             {
                                 let output_file = File::open(path.clone() + &count.to_string() + ".out").await.unwrap();
@@ -541,6 +554,7 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                                 tx.send(job.clone()).await.unwrap();
                             }
                         }
+                        //MLE
                         else if status == -1
                         {
                             job.cases[count].result = "Memory Limit Exceeded".to_string();
@@ -548,6 +562,7 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                             job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                             tx.send(job.clone()).await.unwrap();
                         }
+                        //abnormal exit: RE
                         else
                         {
                             job.cases[count].result = "Runtime Error".to_string();
@@ -556,6 +571,7 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
                             tx.send(job.clone()).await.unwrap();
                         }
                     }
+                    //TLE
                     None =>
                     {
                         job.cases[count].result = "Time Limit Exceeded".to_string();
@@ -574,15 +590,17 @@ pub async fn job_producer(tx_origin: mpsc::Sender<Job>, config_origin: Config)
             job.updated_time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
             tx.send(job.clone()).await.unwrap();
     
-            let _ = remove_dir_all("./".to_string() + &job.id.to_string()).await;
+            let _ = remove_dir_all("./tmp_code_runner/".to_string() + &job.id.to_string()).await;
         });
         }
         time::sleep(time::Duration::from_millis(500)).await;
     }
 }
 
+//update function
 pub async fn job_consumer(mut rx: mpsc::Receiver<Job>)
 {
+    //receive the updated job from sender
     while let Some(job) = rx.recv().await
     {
         let mut lock = JOB_LIST.lock().await;
@@ -592,9 +610,10 @@ pub async fn job_consumer(mut rx: mpsc::Receiver<Job>)
     }
 }
 
+//code runner
 async fn run_case(path: &str, in_file: &str, out_file: &str, time_limit: u64, memory_limit: u64, memory: &mut u64) -> Option<i64>
 {
-    match Command::new("./run")
+    match Command::new("./tmp_code_runner/run")
         .arg("-p")
         .arg(path)
         .arg("-i")
@@ -615,6 +634,7 @@ async fn run_case(path: &str, in_file: &str, out_file: &str, time_limit: u64, me
         Err(_) => return Some(-1),
     }
 
+    //get exit status
     let result_file = File::open(path.to_string() + "run.out").await.unwrap();
     let mut reader = BufReader::new(result_file).lines();
     let mut result: Vec<i64> = Vec::new();

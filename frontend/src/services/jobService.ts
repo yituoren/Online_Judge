@@ -1,5 +1,6 @@
 import api from './api';
 
+//actually this file contains all the services, not only for jobs
 interface Job {
     source_code: string;
     language: string;
@@ -10,13 +11,10 @@ interface Job {
 
 const createJob = async (job: Job) => {
   try {
-    // 将 Job 对象序列化成 JSON 字符串
     const jsonJob = JSON.stringify(job);
-  
-    // 发送 POST 请求，并将 JSON 字符串作为请求体
     const response = await api.post('/jobs', jsonJob, {
       headers: {
-        'Content-Type': 'application/json' // 确保请求头中指定内容类型为 JSON
+        'Content-Type': 'application/json'
       }
     });
     

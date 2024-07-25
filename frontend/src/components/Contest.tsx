@@ -22,6 +22,7 @@ interface UserRank {
 }
 
 const GetContest: React.FC = () => {
+    //1 for contestlist query, 3 for contest by id, 2 for rank
     const [responseMessage1, setResponseMessage1] = useState<Contest[]>([]);
     const [responseMessage3, setResponseMessage3] = useState<Contest | null>(null);
     const [responseMessage2, setResponseMessage2] = useState<UserRank[]>([]);
@@ -43,6 +44,7 @@ const GetContest: React.FC = () => {
         setId2(e.target.value);
     }
 
+    //selection change
     const handleInputChange3 = async (e: React.ChangeEvent<HTMLSelectElement>) => {
         const { name, value } = e.target;
         setQuery(prevQuery => ({
@@ -94,6 +96,7 @@ const GetContest: React.FC = () => {
         }
     }
 
+    //error component
     const renderError = (error: any) => {
         return (
             <div className="response-message">
@@ -110,6 +113,7 @@ const GetContest: React.FC = () => {
         )
     }
 
+    //response component
     const renderContest = (contest: Contest) => {
         return (
             <div className="response-message">

@@ -18,6 +18,7 @@ pub struct PostUser
     pub id: Option<usize>,
     pub name: String,
 }
+
 #[post("/users")]
 pub async fn post_users(post_user: web::Json<PostUser>) -> HttpResponse
 {
@@ -33,6 +34,7 @@ pub async fn post_users(post_user: web::Json<PostUser>) -> HttpResponse
                 message: "User name '".to_string() + &post_user.name + "' already exists."
             });
     }
+    //update user
     if let Some(id) = post_user.id
     {
         if id >= max
@@ -64,6 +66,7 @@ pub async fn post_users(post_user: web::Json<PostUser>) -> HttpResponse
                 .json(lock[id].clone());
         }
     }
+    //new user
     let user = User { id: max, name: post_user.name.clone(), };
     lock.push(user.clone());
     if let Err(_) = insert_user(&user).await

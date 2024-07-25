@@ -5,6 +5,7 @@ use crate::api::contest::Contest;
 use crate::api::job::Job;
 use crate::api::user::User;
 
+//flush data
 pub async fn drop_all_tables() -> Result<()>
 {
     let database = DATABASE.lock().await;
@@ -63,6 +64,7 @@ pub async fn create_tables() -> Result<()>
     Ok(())
 }
 
+//read functions
 pub async fn read_jobs() -> Result<()>
 {
     let database = DATABASE.lock().await;
@@ -149,6 +151,7 @@ pub async fn read_users() -> Result<()>
     Ok(())
 }
 
+//update functions
 pub async fn delete_job(job_id: usize) -> Result<usize>
 {
     let database = DATABASE.lock().await;

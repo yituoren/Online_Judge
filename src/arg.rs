@@ -3,6 +3,7 @@ use serde::{Serialize, Deserialize};
 use serde_json;
 use std::{fs::File, io::{BufReader, Result}};
 
+//read command line
 pub fn get_arg() -> Result<(Config, bool)>
 {
     let args = Command::new("OJ")
@@ -24,6 +25,7 @@ pub fn get_arg() -> Result<(Config, bool)>
     Ok((config, flush))
 }
 
+//struct for config
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config
 {
@@ -68,6 +70,7 @@ pub struct Language
     pub command: Vec<String>,
 }
 
+//gen config from json
 fn get_config(file_name: &str) -> Result<Config>
 {
     let file = File::open(file_name)?;

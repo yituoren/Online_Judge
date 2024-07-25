@@ -1,7 +1,8 @@
 import axios from 'axios';
 
+//create api
 const api = axios.create({
-  baseURL: 'http://localhost:12345', // 后端服务器地址
+  baseURL: 'http://localhost:12345',
 });
 
 export default api;

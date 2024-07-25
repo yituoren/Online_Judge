@@ -7,6 +7,7 @@ use crate::api::job::Job;
 use crate::api::user::User;
 use crate::api::contest::Contest;
 
+//some globals
 lazy_static!
 {
     pub static ref JOB_LIST: Arc<Mutex<Vec<Job>>> = Arc::new(Mutex::new(Vec::new()));
